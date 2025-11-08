@@ -11,6 +11,7 @@
 - [ ] Ensure privilege escalation flows through `pkexec` with `sudo` fallback for protected operations.
 - [ ] Integrate background task runner to keep GTK UI responsive during maintenance workflows.
 - [ ] Verify all features of https://github.com/linuxmint/mintsources are implemented.
+- [ ] Create Flatpak package for Gnome 48 and publish the app on Flathub.
 - [ ] UI requirement0: Program arayüzü sekmeli bir görünümde olacak, fakat sekmeler solda liste olarak gözükmeli. Sekmeler arasında Ctrl+TAB ile gezinilebilir olmalı.
 - [ ] UI requirement1: 1. sekmede: "sudo apt update" ve "sudo apt full-upgrade" komutlarını başlatan yan yana iki buton olsun. Butonlara basıldığında, pencereye entegre terminalde çıktıyı göstersin.
 - [ ] UI requirement1a: Komut çıktısında herhangi bir sorun varsa, program fix'lemeyi önersin.
