@@ -264,12 +264,19 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
 
     def _install_keyboard_navigation(self):
         controller = Gtk.EventControllerKey()
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         controller.connect("key-pressed", self._on_key_pressed)
         self.add_controller(controller)
 
     def _on_key_pressed(self, _controller, keyval, keycode, state):
-        if keyval == Gdk.KEY_Tab and state & Gdk.ModifierType.CONTROL_MASK:
-            self._switch_to_next_page(reverse=bool(state & Gdk.ModifierType.SHIFT_MASK))
+        if (
+            keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab)
+            and state & Gdk.ModifierType.CONTROL_MASK
+        ):
+            reverse = keyval == Gdk.KEY_ISO_Left_Tab or bool(
+                state & Gdk.ModifierType.SHIFT_MASK
+            )
+            self._switch_to_next_page(reverse=reverse)
             return True
         return False
 
