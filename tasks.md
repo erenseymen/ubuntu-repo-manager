@@ -12,8 +12,8 @@
 - [ ] Integrate background task runner to keep GTK UI responsive during maintenance workflows.
 - [ ] Verify all features of https://github.com/linuxmint/mintsources are implemented.
 - [ ] Create Flatpak package for Gnome 48 and publish the app on Flathub.
-- [ ] UI requirement0: Program arayüzü sekmeli bir görünümde olacak, fakat sekmeler solda liste olarak gözükmeli. Sekmeler arasında Ctrl+TAB ile gezinilebilir olmalı.
-- [ ] UI requirement1: 1. sekmede: "sudo apt update" ve "sudo apt full-upgrade" komutlarını başlatan yan yana iki buton olsun. Butonlara basıldığında, pencereye entegre terminalde çıktıyı göstersin.
+- [x] UI requirement0: Program arayüzü sekmeli bir görünümde olacak, fakat sekmeler solda liste olarak gözükmeli. Sekmeler arasında Ctrl+TAB ile gezinilebilir olmalı.
+- [x] UI requirement1: 1. sekmede: "sudo apt update" ve "sudo apt full-upgrade" komutlarını başlatan yan yana iki buton olsun. Butonlara basıldığında, pencereye entegre terminalde çıktıyı göstersin.
 - [ ] UI requirement1a: Komut çıktısında herhangi bir sorun varsa, program fix'lemeyi önersin.
 Komut çıktısında herhangi bir sorun varsa, program fix'lemeyi önersin.
 - [ ] UI requirement2: 2. sekmede: Sistemde yüklü olan tüm repolar (PPA'lar dahil) liste halinde gösterilsin. Official repos, PPAs ve diğer repolar ayrı gruplar olarak gösterilmeli. Repolar hakkında yapılabilecek tüm özellikler bu sekmede olmalı. Örneğin, en hızlı server'ı seçme özelliği de burada olsun.
