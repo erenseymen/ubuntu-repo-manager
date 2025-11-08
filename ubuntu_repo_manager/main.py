@@ -191,7 +191,19 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
 
         self._toast_overlay = Adw.ToastOverlay()
         self._toast_overlay.set_child(clamp)
-        self.set_content(self._toast_overlay)
+
+        header_bar = Adw.HeaderBar()
+        header_bar.set_show_start_title_buttons(True)
+        header_bar.set_show_end_title_buttons(True)
+        header_bar.set_title_widget(
+            Adw.WindowTitle(title="Ubuntu Repository Manager", subtitle=None)
+        )
+
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(header_bar)
+        toolbar_view.set_content(self._toast_overlay)
+
+        self.set_content(toolbar_view)
 
         self._init_system_updates_page()
         self._init_placeholder_pages()
