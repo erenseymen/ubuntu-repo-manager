@@ -777,6 +777,7 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         page_box.append(scroller)
 
         self._repo_groups: Dict[str, Adw.PreferencesGroup] = {}
+        self._repo_group_rows: Dict[str, List[Gtk.Widget]] = {}
         for group_id, title, description in [
             (
                 "official",
@@ -796,6 +797,7 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         ]:
             group_widget = Adw.PreferencesGroup(title=title, description=description)
             self._repo_groups[group_id] = group_widget
+            self._repo_group_rows[group_id] = []
             preferences_page.add(group_widget)
 
         self._stack.add_titled(page_box, "repositories", "Repositories")
@@ -831,31 +833,40 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         self._repo_switch_handlers.clear()
 
         for group_id, group_widget in self._repo_groups.items():
-            self._clear_preferences_group(group_widget)
+            self._clear_preferences_group(group_id)
             rows = grouped.get(group_id, [])
             if not rows:
                 placeholder = Gtk.Label(label="No repositories detected.")
                 placeholder.add_css_class("dim-label")
                 placeholder.set_xalign(0.0)
                 group_widget.add(placeholder)
+                self._repo_group_rows[group_id].append(placeholder)
                 continue
             for entry in rows:
                 row = self._create_repository_row(entry)
                 group_widget.add(row)
+                self._repo_group_rows[group_id].append(row)
 
         self._repo_status_label.set_label(f"{len(entries)} repositories detected")
 
-    def _clear_preferences_group(self, group: Adw.PreferencesGroup) -> None:
-        child = group.get_first_child()
-        while child is not None:
-            next_child = child.get_next_sibling()
-            group.remove(child)
-            child = next_child
+    def _clear_preferences_group(self, group_id: str) -> None:
+        group_widget = self._repo_groups.get(group_id)
+        if group_widget is None:
+            return
+        tracked_rows = self._repo_group_rows.get(group_id, [])
+        for row in tracked_rows:
+            group_widget.remove(row)
+        self._repo_group_rows[group_id] = []
 
     def _create_repository_row(self, entry: RepositoryEntry) -> Adw.ActionRow:
         title = entry.label or "Repository"
+        if not entry.enabled:
+            title = f"{title} (Disabled)"
         subtitle = entry.subtitle()
         row = Adw.ActionRow(title=title, subtitle=subtitle)
+
+        if not entry.enabled:
+            row.add_css_class("dim-label")
 
         switch = Gtk.Switch()
         switch.set_active(entry.enabled)
