@@ -14,6 +14,27 @@ Ubuntu Repository Manager is a modern GTK 4 / libadwaita desktop application for
 - **Maintenance dashboard** – run guided fixes for `apt-get update`, `dpkg --configure -a`, `apt-get install -f`, cache cleaning, autoremove, and default-source restoration.
 - **Common error remediation** – the log view annotates `apt` failures (missing keys, dpkg lock, hash mismatch, etc.) with suggested commands and next steps.
 
+## Getting Started
+
+### Prerequisites
+
+Ubuntu Repository Manager requires Python 3 and GTK 4 / libadwaita. Install the necessary dependencies on Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
+```
+
+### Running the Application
+
+To start the application, run:
+
+```bash
+python3 ubuntu_repo_manager/main.py
+```
+
+**Note:** Some operations (such as modifying repository configurations) require administrator privileges. The application will prompt for authentication using `pkexec` or `sudo` when needed.
+
 ## UI Layout
 
 Five primary tabs sit in a vertical rail on the left. Keyboard users can cycle through them with `Ctrl+Tab`.
