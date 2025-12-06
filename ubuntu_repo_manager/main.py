@@ -634,6 +634,8 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         self._repo_switch_handlers: Dict[Gtk.Switch, int] = {}
         self._mirror_last_results: Optional[List[Tuple[str, float]]] = None
         self._benchmark_running = False
+        self._all_repo_entries: List[RepositoryEntry] = []
+        self._repo_search_query = ""
 
         self._stack = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
@@ -675,6 +677,9 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         self._init_repositories_page()
         self._init_placeholder_pages()
         self._install_keyboard_navigation()
+        
+        # Initialize search key capture based on initial page
+        GLib.idle_add(self._update_search_key_capture)
 
     def _init_system_updates_page(self):
         page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -723,6 +728,7 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         page_box.set_margin_end(12)
         page_box.set_vexpand(True)
         page_box.set_hexpand(True)
+        self._repo_page_box = page_box
 
         header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header_box.set_hexpand(True)
@@ -749,6 +755,23 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         header_box.append(self._repo_benchmark_button)
 
         page_box.append(header_box)
+
+        # Search bar - initially hidden, appears when typing
+        self._repo_search_bar = Gtk.SearchBar()
+        self._repo_search_bar.set_show_close_button(True)
+        
+        self._repo_search_entry = Gtk.SearchEntry()
+        self._repo_search_entry.set_placeholder_text("Search repositories…")
+        self._repo_search_entry.set_hexpand(True)
+        self._repo_search_entry.connect("search-changed", self._on_repo_search_changed)
+        self._repo_search_entry.connect("stop-search", self._on_repo_search_stopped)
+        
+        self._repo_search_bar.set_child(self._repo_search_entry)
+        self._repo_search_bar.connect_entry(self._repo_search_entry)
+        page_box.append(self._repo_search_bar)
+        
+        self._repo_search_query = ""
+        self._all_repo_entries: List[RepositoryEntry] = []
 
         self._mirror_results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._mirror_results_box.set_visible(False)
@@ -802,6 +825,9 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
 
         self._stack.add_titled(page_box, "repositories", "Repositories")
         self._refresh_repository_view()
+        
+        # Connect stack visibility changes to toggle search key capture
+        self._stack.connect("notify::visible-child", self._on_stack_page_changed)
 
     def _init_placeholder_pages(self):
         for page_id, title in [
@@ -823,9 +849,10 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
             self._repo_status_label.set_label("Failed to read repositories.")
             self._show_toast(str(exc))
             return
-        self._render_repository_entries(entries)
+        self._all_repo_entries = entries
+        self._filter_repository_entries()
 
-    def _render_repository_entries(self, entries: Sequence[RepositoryEntry]):
+    def _render_repository_entries(self, entries: Sequence[RepositoryEntry], is_filtered: bool = False):
         grouped: Dict[str, List[RepositoryEntry]] = {key: [] for key in self._repo_groups}
         for entry in entries:
             grouped.setdefault(entry.group, []).append(entry)
@@ -836,7 +863,8 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
             self._clear_preferences_group(group_id)
             rows = grouped.get(group_id, [])
             if not rows:
-                placeholder = Gtk.Label(label="No repositories detected.")
+                placeholder_text = "No matching repositories." if is_filtered else "No repositories detected."
+                placeholder = Gtk.Label(label=placeholder_text)
                 placeholder.add_css_class("dim-label")
                 placeholder.set_xalign(0.0)
                 group_widget.add(placeholder)
@@ -847,7 +875,12 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
                 group_widget.add(row)
                 self._repo_group_rows[group_id].append(row)
 
-        self._repo_status_label.set_label(f"{len(entries)} repositories detected")
+        if is_filtered:
+            total = len(self._all_repo_entries)
+            shown = len(entries)
+            self._repo_status_label.set_label(f"Showing {shown} of {total} repositories")
+        else:
+            self._repo_status_label.set_label(f"{len(entries)} repositories detected")
 
     def _clear_preferences_group(self, group_id: str) -> None:
         group_widget = self._repo_groups.get(group_id)
@@ -895,6 +928,56 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
     def _on_refresh_repositories_clicked(self, _button):
         self._repo_status_label.set_label("Refreshing…")
         self._refresh_repository_view()
+
+    def _on_stack_page_changed(self, stack, _param):
+        """Enable/disable search key capture based on current page."""
+        self._update_search_key_capture()
+
+    def _update_search_key_capture(self):
+        """Update search key capture widget based on current page."""
+        is_repo_page = self._stack.get_visible_child() == self._repo_page_box
+        if is_repo_page:
+            self._repo_search_bar.set_key_capture_widget(self)
+        else:
+            self._repo_search_bar.set_key_capture_widget(None)
+            # Close search when leaving the page
+            if self._repo_search_bar.get_search_mode():
+                self._repo_search_bar.set_search_mode(False)
+                self._repo_search_entry.set_text("")
+        return False  # For GLib.idle_add
+
+    def _on_repo_search_changed(self, search_entry):
+        self._repo_search_query = search_entry.get_text().strip().lower()
+        self._filter_repository_entries()
+
+    def _on_repo_search_stopped(self, _search_entry):
+        self._repo_search_bar.set_search_mode(False)
+        self._repo_search_entry.set_text("")
+        self._repo_search_query = ""
+        self._filter_repository_entries()
+
+    def _filter_repository_entries(self):
+        if not self._repo_search_query:
+            # Show all entries
+            self._render_repository_entries(self._all_repo_entries)
+        else:
+            # Filter entries based on search query
+            filtered = [
+                entry for entry in self._all_repo_entries
+                if self._entry_matches_search(entry, self._repo_search_query)
+            ]
+            self._render_repository_entries(filtered, is_filtered=True)
+
+    def _entry_matches_search(self, entry: RepositoryEntry, query: str) -> bool:
+        searchable = " ".join([
+            entry.label or "",
+            entry.uri or "",
+            entry.suite or "",
+            " ".join(entry.components) if entry.components else "",
+            entry.group or "",
+            entry.file_path or "",
+        ]).lower()
+        return query in searchable
 
     def _submit_background(self, func, done_callback):
         future = self._executor.submit(func)
