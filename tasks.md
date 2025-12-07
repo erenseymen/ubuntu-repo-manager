@@ -13,7 +13,7 @@
 
 ### 🌐 Tab 3: Mirror Selection
 - [x] En hızlı mirror'ı bulma ve seçme özelliği. İki aşamalı benchmark (ping + download), sonuçları cache'leme, seçim değiştiğinde ping ile doğrulama.
-- [ ] Build mirror benchmarking workflow that fetches Ubuntu mirror inventory, collects health metrics, and enables one-click switching.
+- [x] Build mirror benchmarking workflow that fetches Ubuntu mirror inventory, collects health metrics, and enables one-click switching.
 
 ### 🔑 Tab 4: Authentication Keys
 - [ ] Authentication key management UI: browse keyring, import fingerprints from Ubuntu keyserver, and remove stale keys.
