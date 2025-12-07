@@ -1,0 +1,18 @@
+---
+description: General language settings
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Language Settings
+
+## General Preferences
+
+- **Project language:** English
+- **Commit message language:** English
+- **Code comments language:** English
+- **Documentation language:** English
+
+## Notes
+
+Variable and function names in code can remain in English. All user-facing text should also be in English.
