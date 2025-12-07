@@ -27,6 +27,8 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
+from ubuntu_repo_manager.terminal import TerminalWidget
+
 
 class RepositoryError(RuntimeError):
     """Custom exception raised for repository management errors."""
@@ -806,155 +808,6 @@ class RepositoryManager:
                     return value
         return None
 
-class CommandLogView(Gtk.ScrolledWindow):
-    def __init__(self):
-        super().__init__()
-        self.set_hexpand(True)
-        self.set_vexpand(True)
-
-        self._text_view = Gtk.TextView()
-        self._text_view.set_editable(False)
-        self._text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self._buffer = self._text_view.get_buffer()
-
-        self.set_child(self._text_view)
-
-        self._pid = None
-        self._stdout_fd = None
-        self._stderr_fd = None
-        self._stdout_source = None
-        self._stderr_source = None
-        self._child_watch_id = None
-
-    def _cleanup(self):
-        if self._stdout_source is not None:
-            GLib.source_remove(self._stdout_source)
-            self._stdout_source = None
-        if self._stderr_source is not None:
-            GLib.source_remove(self._stderr_source)
-            self._stderr_source = None
-        if self._stdout_fd is not None:
-            try:
-                os.close(self._stdout_fd)
-            except OSError:
-                pass
-            self._stdout_fd = None
-        if self._stderr_fd is not None:
-            try:
-                os.close(self._stderr_fd)
-            except OSError:
-                pass
-            self._stderr_fd = None
-        if self._child_watch_id is not None:
-            GLib.source_remove(self._child_watch_id)
-            self._child_watch_id = None
-        if self._pid is not None:
-            try:
-                os.kill(self._pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            GLib.spawn_close_pid(self._pid)
-            self._pid = None
-
-    def _append(self, text: str):
-        end_iter = self._buffer.get_end_iter()
-        self._buffer.insert(end_iter, text)
-        self._text_view.scroll_to_iter(self._buffer.get_end_iter(), 0.0, False, 0.0, 1.0)
-
-    def _on_fd_ready(self, fd, condition, prefix):
-        if condition & GLib.IOCondition.IN:
-            try:
-                chunk = os.read(fd, 4096)
-            except OSError:
-                chunk = b""
-
-            if chunk:
-                decoded = chunk.decode("utf-8", errors="replace")
-                self._append(decoded)
-                return True
-
-        if prefix == "stdout":
-            if self._stdout_fd is not None:
-                try:
-                    os.close(self._stdout_fd)
-                except OSError:
-                    pass
-                self._stdout_fd = None
-            self._stdout_source = None
-        else:
-            if self._stderr_fd is not None:
-                try:
-                    os.close(self._stderr_fd)
-                except OSError:
-                    pass
-                self._stderr_fd = None
-            self._stderr_source = None
-        return False
-
-    def _on_child_exit(self, pid, status):
-        if pid != self._pid:
-            GLib.spawn_close_pid(pid)
-            return
-        exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else status
-        self._append(f"\n[exit status {exit_code}]\n")
-        GLib.spawn_close_pid(pid)
-        self._pid = None
-        self._child_watch_id = None
-
-    def run_command(self, command: str, on_error=None):
-        self._cleanup()
-        self._buffer.set_text("")
-        self._append(f"$ {command}\n\n")
-
-        argv = ["/bin/sh", "-c", command]
-        try:
-            success, pid, stdin_fd, stdout_fd, stderr_fd = GLib.spawn_async_with_pipes(
-                None,
-                argv,
-                None,
-                GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
-                None,
-                None,
-            )
-        except GLib.Error as exc:
-            if on_error:
-                on_error(f"Failed to run command: {exc.message}")
-            else:
-                self._append(f"Failed to run command: {exc.message}\n")
-            return
-        if not success:
-            if on_error:
-                on_error("Failed to run command.")
-            else:
-                self._append("Failed to run command.\n")
-            return
-
-        if stdin_fd is not None:
-            os.close(stdin_fd)
-
-        self._pid = pid
-        self._stdout_fd = stdout_fd
-        self._stderr_fd = stderr_fd
-
-        self._stdout_source = GLib.unix_fd_add_full(
-            GLib.PRIORITY_DEFAULT,
-            stdout_fd,
-            GLib.IOCondition.IN | GLib.IOCondition.HUP,
-            self._on_fd_ready,
-            "stdout",
-        )
-        self._stderr_source = GLib.unix_fd_add_full(
-            GLib.PRIORITY_DEFAULT,
-            stderr_fd,
-            GLib.IOCondition.IN | GLib.IOCondition.HUP,
-            self._on_fd_ready,
-            "stderr",
-        )
-        self._child_watch_id = GLib.child_watch_add(
-            GLib.PRIORITY_DEFAULT, pid, self._on_child_exit
-        )
-
-
 class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -972,6 +825,10 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         self._benchmark_running = False
         self._all_repo_entries: List[RepositoryEntry] = []
         self._repo_search_query = ""
+
+        # Shared terminal instance for all tabs
+        self._shared_terminal = TerminalWidget(title="Terminal", show_close_button=False)
+        self._shared_terminal.set_margin_top(12)
 
         self._stack = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
@@ -1023,18 +880,6 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
 
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
-        info_label = Gtk.Label(
-            label="Command output will appear below (read-only log view)."
-        )
-        info_label.set_wrap(True)
-        info_label.add_css_class("dim-label")
-        page_box.append(info_label)
-
-        self.terminal = CommandLogView()
-        self.terminal.set_hexpand(True)
-        self.terminal.set_vexpand(True)
-        self.terminal.set_margin_top(12)
-
         update_button = Gtk.Button(label="Run sudo apt update")
         full_upgrade_button = Gtk.Button(label="Run sudo apt full-upgrade")
 
@@ -1049,7 +894,9 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         button_box.append(full_upgrade_button)
 
         page_box.append(button_box)
-        page_box.append(self.terminal)
+        # Use shared terminal
+        self._shared_terminal.set_title("Command Output")
+        page_box.append(self._shared_terminal)
 
         self._stack.add_titled(
             page_box,
@@ -1276,60 +1123,10 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
 
         page_box.append(self._mirror_action_box)
 
-        # Benchmark terminal output
-        self._benchmark_terminal_frame = Gtk.Frame()
-        self._benchmark_terminal_frame.set_visible(False)
-        self._benchmark_terminal_frame.add_css_class("view")
-        self._benchmark_terminal_frame.set_vexpand(True)
+        # Use shared terminal for benchmark output
+        # The terminal will be shown/hidden and title updated as needed
         
-        benchmark_terminal_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        
-        benchmark_terminal_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        benchmark_terminal_header.set_margin_top(6)
-        benchmark_terminal_header.set_margin_bottom(6)
-        benchmark_terminal_header.set_margin_start(12)
-        benchmark_terminal_header.set_margin_end(6)
-        
-        benchmark_terminal_title = Gtk.Label(label="Benchmark Progress")
-        benchmark_terminal_title.set_xalign(0.0)
-        benchmark_terminal_title.add_css_class("heading")
-        benchmark_terminal_header.append(benchmark_terminal_title)
-        
-        spacer = Gtk.Box()
-        spacer.set_hexpand(True)
-        benchmark_terminal_header.append(spacer)
-        
-        self._benchmark_close_button = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        self._benchmark_close_button.set_valign(Gtk.Align.CENTER)
-        self._benchmark_close_button.set_tooltip_text("Close terminal")
-        self._benchmark_close_button.add_css_class("flat")
-        self._benchmark_close_button.connect("clicked", self._on_close_benchmark_terminal)
-        benchmark_terminal_header.append(self._benchmark_close_button)
-        
-        benchmark_terminal_box.append(benchmark_terminal_header)
-        
-        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        benchmark_terminal_box.append(separator)
-        
-        self._benchmark_terminal = Gtk.ScrolledWindow()
-        self._benchmark_terminal.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        self._benchmark_terminal.set_vexpand(True)
-        
-        self._benchmark_text_view = Gtk.TextView()
-        self._benchmark_text_view.set_editable(False)
-        self._benchmark_text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self._benchmark_text_view.set_monospace(True)
-        self._benchmark_text_view.set_left_margin(12)
-        self._benchmark_text_view.set_right_margin(12)
-        self._benchmark_text_view.set_top_margin(8)
-        self._benchmark_text_view.set_bottom_margin(8)
-        self._benchmark_buffer = self._benchmark_text_view.get_buffer()
-        self._benchmark_terminal.set_child(self._benchmark_text_view)
-        
-        benchmark_terminal_box.append(self._benchmark_terminal)
-        self._benchmark_terminal_frame.set_child(benchmark_terminal_box)
-        
-        page_box.append(self._benchmark_terminal_frame)
+
 
         self._stack.add_titled(page_box, "mirrors", "Mirror Selection")
         self._mirror_page_box = page_box  # Store reference for stack page change detection
@@ -1852,6 +1649,24 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         # Update current mirror display when mirror page becomes visible
         if hasattr(self, '_mirror_page_box') and stack.get_visible_child() == self._mirror_page_box:
             self._update_current_mirror_display()
+        
+        # Update terminal title based on active page
+        visible_child = stack.get_visible_child()
+        if visible_child:
+            page_name = None
+            for page in stack.get_pages():
+                if page.get_child() == visible_child:
+                    page_name = page.get_name()
+                    break
+            
+            if page_name == "system_updates":
+                self._shared_terminal.set_title("Command Output")
+                # Terminal is always visible on System Updates page
+                self._shared_terminal.set_visible(True)
+            elif page_name == "mirrors":
+                # Terminal is managed by benchmark operations on this page
+                # It will be shown when benchmark runs
+                pass
 
     def _update_search_key_capture(self):
         """Update search key capture widget based on current page."""
@@ -1940,17 +1755,9 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         self._submit_background(work, done)
         return True
 
-    def _on_close_benchmark_terminal(self, _button):
-        self._benchmark_terminal_frame.set_visible(False)
-
     def _append_benchmark_output(self, text: str):
-        """Append text to benchmark terminal (must be called from main thread)."""
-        end_iter = self._benchmark_buffer.get_end_iter()
-        self._benchmark_buffer.insert(end_iter, text)
-        # Scroll to end
-        mark = self._benchmark_buffer.create_mark(None, self._benchmark_buffer.get_end_iter(), False)
-        self._benchmark_text_view.scroll_mark_onscreen(mark)
-        self._benchmark_buffer.delete_mark(mark)
+        """Append text to shared terminal (must be called from main thread)."""
+        self._shared_terminal.append_text(text)
 
     def _on_benchmark_mirrors_clicked(self, _button):
         if self._benchmark_running:
@@ -1961,9 +1768,20 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         self._mirror_benchmark_button.set_sensitive(False)
         self._mirror_apply_button.set_sensitive(False)
         
-        # Show and clear the benchmark terminal
-        self._benchmark_buffer.set_text("")
-        self._benchmark_terminal_frame.set_visible(True)
+        # Show and clear the shared terminal with benchmark title
+        # Switch to System Updates page to show terminal
+        system_updates_page = None
+        for page in self._stack.get_pages():
+            if page.get_name() == "system_updates":
+                system_updates_page = page.get_child()
+                break
+        
+        if system_updates_page:
+            self._stack.set_visible_child(system_updates_page)
+        
+        self._shared_terminal.set_title("Benchmark Progress")
+        self._shared_terminal.clear()
+        self._shared_terminal.set_visible(True)
 
         def progress_callback(msg: str):
             """Thread-safe progress reporter using GLib.idle_add."""
@@ -2112,7 +1930,17 @@ class UbuntuRepoManagerWindow(Adw.ApplicationWindow):
         if not command:
             return
 
-        self.terminal.run_command(command, on_error=self._show_toast)
+        # Update terminal title based on command
+        if "update" in command:
+            self._shared_terminal.set_title("Command Output: apt update")
+        elif "upgrade" in command:
+            self._shared_terminal.set_title("Command Output: apt full-upgrade")
+        else:
+            self._shared_terminal.set_title("Command Output")
+        
+        # Ensure terminal is visible
+        self._shared_terminal.set_visible(True)
+        self._shared_terminal.run_command(command, on_error=self._show_toast)
 
     def _show_toast(self, message):
         # Escape special characters that Pango interprets as markup
