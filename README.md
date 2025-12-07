@@ -11,7 +11,7 @@ Ubuntu Repository Manager is a modern GTK 4 / libadwaita desktop application for
 - **Authentication keys** – browse the current trusted keyring, import fingerprints from the Ubuntu keyserver, or remove stale keys.
 - **Foreign packages** – audit packages that do not originate from Ubuntu or Canonical archives and purge them individually.
 - **Workspace tabs navigation** – left-aligned tab sidebar keeps major workflows a `Ctrl+Tab` away while preserving GNOME window chrome.
-- **Maintenance dashboard** – run guided fixes for `apt-get update`, `dpkg --configure -a`, `apt-get install -f`, cache cleaning, autoremove, and default-source restoration.
+- **Maintenance dashboard** – run guided fixes for `apt update`, `dpkg --configure -a`, `apt install -f`, cache cleaning, autoremove, and default-source restoration.
 - **Common error remediation** – the log view annotates `apt` failures (missing keys, dpkg lock, hash mismatch, etc.) with suggested commands and next steps.
 
 ## Getting Started
@@ -50,9 +50,9 @@ Five primary tabs sit in a vertical rail on the left. Keyboard users can cycle t
 | Symptom | Suggested fix |
 | --- | --- |
 | Missing public key (`NO_PUBKEY`) | Import fingerprint via `gpg --recv-keys` (automated from the Maintenance page). |
-| `dpkg was interrupted` | Run `dpkg --configure -a`, then `apt-get install -f`. |
+| `dpkg was interrupted` | Run `dpkg --configure -a`, then `apt install -f`. |
 | Unable to acquire the dpkg frontend lock | Close conflicting package managers, remove stale lock files. |
-| Hash sum mismatch | Clean `/var/lib/apt/lists`, refresh mirrors, re-run `apt-get update`. |
+| Hash sum mismatch | Clean `/var/lib/apt/lists`, refresh mirrors, re-run `apt update`. |
 | Untrusted package prompt | Import the repository's signing key or disable the repository from the Additional Repositories page. |
 
 Every automated action writes to the in-app logs alongside remediation hints referencing the commands above, so you can copy-paste them into a terminal if you prefer running them manually.
