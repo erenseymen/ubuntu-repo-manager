@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+import sys
+from pathlib import Path
+
+# Add parent directory to Python path to allow imports when running as script
+_parent_dir = Path(__file__).parent.parent
+if str(_parent_dir) not in sys.path:
+    sys.path.insert(0, str(_parent_dir))
+
 import atexit
 import json
 import os
